@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
@@ -55,13 +56,25 @@ export default function OfflineApp() {
     URL.revokeObjectURL(url);
   }
 
+  function handleRefresh() {
+    setText('');
+    setResult('');
+    setBusy(null);
+    window.localStorage.removeItem(DRAFT_KEY);
+  }
+
   return (
     <div className="mx-auto flex h-full max-w-2xl flex-col gap-4 overflow-y-auto p-4">
-      <header>
-        <h2 className="font-headline text-xl font-semibold">Vicious Offline</h2>
-        <p className="text-xs text-muted-foreground">
-          Local-first text workspace. AI tools summarize, explain, or classify your text.
-        </p>
+      <header className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="font-headline text-xl font-semibold">Vicious Offline</h2>
+          <p className="text-xs text-muted-foreground">
+            Local-first text workspace. AI tools summarize, explain, or classify your text.
+          </p>
+        </div>
+        <Button size="sm" variant="ghost" onClick={handleRefresh} title="Refresh tab">
+          <RefreshCw className="h-4 w-4" />
+        </Button>
       </header>
 
       <Textarea

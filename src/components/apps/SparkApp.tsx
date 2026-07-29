@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Save, Sparkles, Trash2 } from 'lucide-react';
+import { RefreshCw, Save, Sparkles, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -81,6 +81,14 @@ export default function SparkApp() {
     }
   }
 
+  function handleRefresh() {
+    setHtml(DEFAULT_HTML);
+    setCss(DEFAULT_CSS);
+    setDescription('');
+    setProjectName('untitled');
+    setGenerating(false);
+  }
+
   function saveProject() {
     const name = projectName.trim() || 'untitled';
     const project: VaultProject = { name, html, css };
@@ -111,9 +119,14 @@ export default function SparkApp() {
     <div className="flex h-full flex-col">
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
         <h2 className="font-headline text-base font-bold tracking-tight">Vicious Spark</h2>
-        <span className="hidden text-xs text-muted-foreground sm:inline">
-          Reactive HTML/CSS component pipeline
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="hidden text-xs text-muted-foreground sm:inline">
+            Reactive HTML/CSS component pipeline
+          </span>
+          <Button size="sm" variant="ghost" onClick={handleRefresh} title="Refresh tab">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        </div>
       </header>
 
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border p-3">

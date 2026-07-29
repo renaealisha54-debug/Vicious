@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Play, Sparkles, Wand2, Tag } from 'lucide-react';
+import { Play, RefreshCw, Sparkles, Wand2, Tag } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -126,6 +126,20 @@ export default function ScriptApp() {
     worker.postMessage(code);
   }
 
+  function handleRefresh() {
+    workerRef.current?.terminate();
+    workerRef.current = null;
+    setCode(DEFAULT_CODE);
+    setTitle(DEFAULT_TITLE);
+    setLines([]);
+    setLastError(null);
+    setGenPrompt('');
+    setRunning(false);
+    setBusy(null);
+    window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(TITLE_STORAGE_KEY);
+  }
+
   async function handleInterpretError() {
     if (!lastError || busy) return;
     setBusy('error');
@@ -175,6 +189,9 @@ export default function ScriptApp() {
           <span className="truncate text-xs text-muted-foreground">— {title}</span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <Button size="sm" variant="ghost" onClick={handleRefresh} title="Refresh tab">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
           <Button size="sm" variant="outline" onClick={handleTitle} disabled={busy !== null}>
             <Tag className="mr-2 h-4 w-4" />
             {busy === 'title' ? 'Titling…' : 'AI Title'}

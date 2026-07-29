@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import JSZip from 'jszip';
-import { FileArchive, Sparkles } from 'lucide-react';
+import { FileArchive, RefreshCw, Sparkles } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { CodeEditor } from '@/components/workbench/CodeEditor';
@@ -81,6 +81,15 @@ export default function ArchiApp() {
     }
   }
 
+  function handleRefresh() {
+    setInput('');
+    setFiles([]);
+    setFramework(undefined);
+    setDependencies([]);
+    setSelectedPath(null);
+    setStatus('idle');
+  }
+
   async function handleExportZip() {
     if (files.length === 0) return;
     const zip = new JSZip();
@@ -109,6 +118,9 @@ export default function ArchiApp() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <Button size="sm" variant="ghost" onClick={handleRefresh} title="Refresh tab">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
           <Button
             size="sm"
             variant="outline"
