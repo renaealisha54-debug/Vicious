@@ -1,5 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -e
+set -o pipefail
 
 echo "== Vicious: Android build =="
 
