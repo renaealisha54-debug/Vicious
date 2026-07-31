@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Vicious</string>
+    <string name="title_activity_main">Vicious</string>
+    <string name="package_name">com.vicious.suite</string>
+    <string name="custom_url_scheme">com.vicious.suite</string>
+</resources>
