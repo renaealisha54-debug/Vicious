@@ -7,18 +7,26 @@ import OfflineApp from '@/components/apps/OfflineApp';
 import ArchiApp from '@/components/apps/ArchiApp';
 import SparkApp from '@/components/apps/SparkApp';
 import ScriptApp from '@/components/apps/ScriptApp';
+import ScanApp from '@/components/apps/ScanApp';
+import SplashScreen from '@/components/SplashScreen';
 
 const TABS = [
   { id: 'offline', label: 'Offline', dot: 'bg-[hsl(var(--tab-offline))]', Component: OfflineApp },
   { id: 'archi', label: 'Archi', dot: 'bg-[hsl(var(--tab-archi))]', Component: ArchiApp },
   { id: 'spark', label: 'Spark', dot: 'bg-[hsl(var(--tab-spark))]', Component: SparkApp },
   { id: 'script', label: 'Script', dot: 'bg-[hsl(var(--tab-script))]', Component: ScriptApp },
+  { id: 'scan', label: 'Scan', dot: 'bg-[hsl(var(--tab-scan))]', Component: ScanApp },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
 
 export default function Home() {
   const [active, setActive] = useState<TabId>('offline');
+  const [showSplash, setShowSplash] = useState(true);
+
+  if (showSplash) {
+    return <SplashScreen onFinish={() => setShowSplash(false)} />;
+  }
 
   return (
     <div className="flex h-screen flex-col bg-background">

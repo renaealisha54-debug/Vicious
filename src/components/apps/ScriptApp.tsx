@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Play, RefreshCw, Sparkles, Wand2, Tag } from 'lucide-react';
+import { Play, RefreshCw, Sparkles, Wand2, Tag, Save } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { aiCodeGenerator, aiErrorInterpreter, aiTitler } from '@/lib/ai';
+import { saveOutput, listOutputs, deleteOutput, type SavedOutput } from '@/lib/outputVault';
 
 const DEFAULT_CODE = `// Welcome to Vicious Script!
 // Write your JavaScript code here.
@@ -31,36 +32,50 @@ const STORAGE_KEY = 'ViciousSuite_Script_draft';
 const TITLE_STORAGE_KEY = 'ViciousSuite_Script_title';
 const DEFAULT_TITLE = 'Untitled Vicious Script';
 const EXECUTION_TIMEOUT_MS = 10000;
+const IFRAME_MESSAGE_TAG = 'vicious-script-sandbox';
+const TAB_KEY = 'script';
 
 interface ConsoleLine {
   level: 'log' | 'info' | 'warn' | 'error';
   text: string;
 }
 
-function buildWorkerSource() {
-  return `
-    self.onmessage = (e) => {
-      const send = (level, args) => {
-        try {
-          const text = args.map(a => {
-            if (typeof a === 'object') { try { return JSON.stringify(a); } catch { return String(a); } }
-            return String(a);
-          }).join(' ');
-          self.postMessage({ type: 'log', level, text });
-        } catch (err) {}
-      };
-      console.log = (...a) => send('log', a);
-      console.info = (...a) => send('info', a);
-      console.warn = (...a) => send('warn', a);
-      console.error = (...a) => send('error', a);
-      try {
-        new Function(e.data)();
-        self.postMessage({ type: 'done' });
-      } catch (err) {
-        self.postMessage({ type: 'error', message: err && err.message ? err.message : String(err) });
+function buildSandboxHtml(userCode: string) {
+  const escaped = JSON.stringify(userCode);
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body><script>
+(function () {
+  const TAG = ${JSON.stringify(IFRAME_MESSAGE_TAG)};
+  function send(kind, payload) {
+    try {
+      parent.postMessage({ tag: TAG, kind, payload }, '*');
+    } catch (e) {}
+  }
+  function fmt(args) {
+    return args.map(function (a) {
+      if (typeof a === 'object' && a !== null) {
+        try { return JSON.stringify(a); } catch (e) { return String(a); }
       }
-    };
-  `;
+      return String(a);
+    }).join(' ');
+  }
+  console.log = function () { send('log', fmt(Array.prototype.slice.call(arguments))); };
+  console.info = function () { send('info', fmt(Array.prototype.slice.call(arguments))); };
+  console.warn = function () { send('warn', fmt(Array.prototype.slice.call(arguments))); };
+  console.error = function () { send('error', fmt(Array.prototype.slice.call(arguments))); };
+  window.onerror = function (message) {
+    send('runtime-error', String(message));
+    return true;
+  };
+  try {
+    new Function(${escaped})();
+    send('done', null);
+  } catch (err) {
+    send('runtime-error', err && err.message ? err.message : String(err));
+  }
+})();
+<\/script></body></html>`;
 }
 
 export default function ScriptApp() {
@@ -72,14 +87,18 @@ export default function ScriptApp() {
   const [busy, setBusy] = useState<'error' | 'generate' | 'title' | null>(null);
   const [genPrompt, setGenPrompt] = useState('');
   const [lastError, setLastError] = useState<string | null>(null);
-  const workerRef = useRef<Worker | null>(null);
+  const [saved, setSaved] = useState<SavedOutput[]>([]);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const savedCode = window.localStorage.getItem(STORAGE_KEY);
     const savedTitle = window.localStorage.getItem(TITLE_STORAGE_KEY);
     if (savedCode) setCode(savedCode);
     if (savedTitle) setTitle(savedTitle);
-    return () => workerRef.current?.terminate();
+    setSaved(listOutputs(TAB_KEY));
+    return () => cleanupIframe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -91,44 +110,66 @@ export default function ScriptApp() {
     window.localStorage.setItem(TITLE_STORAGE_KEY, title);
   }, [title]);
 
+  function cleanupIframe() {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (iframeRef.current) {
+      iframeRef.current.remove();
+      iframeRef.current = null;
+    }
+  }
+
+  function finishRun() {
+    cleanupIframe();
+    setRunning(false);
+  }
+
   function runScript() {
     if (running) return;
     setLines([]);
     setLastError(null);
     setRunning(true);
+    cleanupIframe();
 
-    const blob = new Blob([buildWorkerSource()], { type: 'application/javascript' });
-    const worker = new Worker(URL.createObjectURL(blob));
-    workerRef.current = worker;
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.setAttribute('sandbox', 'allow-scripts');
+    iframe.srcdoc = buildSandboxHtml(code);
+    document.body.appendChild(iframe);
+    iframeRef.current = iframe;
 
-    const timeout = setTimeout(() => {
-      worker.terminate();
-      setRunning(false);
-      setLines((prev) => [...prev, { level: 'error', text: `Execution timed out after ${EXECUTION_TIMEOUT_MS / 1000}s (loop watchdog).` }]);
-    }, EXECUTION_TIMEOUT_MS);
+    const handleMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (!data || data.tag !== IFRAME_MESSAGE_TAG) return;
 
-    worker.onmessage = (e) => {
-      const msg = e.data;
-      if (msg.type === 'log') {
-        setLines((prev) => [...prev, { level: msg.level, text: msg.text }]);
-      } else if (msg.type === 'done') {
-        clearTimeout(timeout);
-        setRunning(false);
-        worker.terminate();
-      } else if (msg.type === 'error') {
-        clearTimeout(timeout);
-        setRunning(false);
-        setLastError(msg.message);
-        setLines((prev) => [...prev, { level: 'error', text: msg.message }]);
-        worker.terminate();
+      if (data.kind === 'done') {
+        window.removeEventListener('message', handleMessage);
+        finishRun();
+      } else if (data.kind === 'runtime-error') {
+        window.removeEventListener('message', handleMessage);
+        setLastError(data.payload);
+        setLines((prev) => [...prev, { level: 'error', text: data.payload }]);
+        finishRun();
+      } else {
+        setLines((prev) => [...prev, { level: data.kind, text: data.payload }]);
       }
     };
-    worker.postMessage(code);
+    window.addEventListener('message', handleMessage);
+
+    timeoutRef.current = setTimeout(() => {
+      window.removeEventListener('message', handleMessage);
+      setLines((prev) => [
+        ...prev,
+        { level: 'error', text: `Execution timed out after ${EXECUTION_TIMEOUT_MS / 1000}s (loop watchdog).` },
+      ]);
+      finishRun();
+    }, EXECUTION_TIMEOUT_MS);
   }
 
   function handleRefresh() {
-    workerRef.current?.terminate();
-    workerRef.current = null;
+    cleanupIframe();
     setCode(DEFAULT_CODE);
     setTitle(DEFAULT_TITLE);
     setLines([]);
@@ -181,6 +222,20 @@ export default function ScriptApp() {
     }
   }
 
+  function handleSaveOutput() {
+    if (!code.trim()) return;
+    const consoleText = lines.map((l) => `[${l.level}] ${l.text}`).join('\n');
+    const combined = `// ${title}\n\n${code}\n\n// --- Console output ---\n${consoleText || '(no output)'}`;
+    const entry = saveOutput(TAB_KEY, title, combined);
+    setSaved((prev) => [entry, ...prev]);
+    toast({ title: 'Saved', description: 'Script + output saved.' });
+  }
+
+  function handleDeleteSaved(id: string) {
+    deleteOutput(TAB_KEY, id);
+    setSaved((prev) => prev.filter((o) => o.id !== id));
+  }
+
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
@@ -195,6 +250,10 @@ export default function ScriptApp() {
           <Button size="sm" variant="outline" onClick={handleTitle} disabled={busy !== null}>
             <Tag className="mr-2 h-4 w-4" />
             {busy === 'title' ? 'Titling…' : 'AI Title'}
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleSaveOutput}>
+            <Save className="mr-2 h-4 w-4" />
+            Save output
           </Button>
           <Button size="sm" onClick={runScript} disabled={running}>
             <Play className="mr-2 h-4 w-4" />
@@ -256,6 +315,32 @@ export default function ScriptApp() {
               </div>
             ))}
           </div>
+          {saved.length > 0 && (
+            <div className="flex shrink-0 flex-wrap gap-2 border-t border-border p-2">
+              {saved.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs"
+                >
+                  <button
+                    className="font-medium hover:underline"
+                    onClick={() => {
+                      const codePart = entry.content.split('\n\n// --- Console output ---')[0];
+                      setCode(codePart.replace(/^\/\/ .*\n\n/, ''));
+                    }}
+                  >
+                    {entry.label}
+                  </button>
+                  <button
+                    onClick={() => handleDeleteSaved(entry.id)}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

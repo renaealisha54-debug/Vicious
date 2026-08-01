@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import JSZip from 'jszip';
-import { FileArchive, RefreshCw, Sparkles } from 'lucide-react';
+import { FileArchive, RefreshCw, Sparkles, Save } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { CodeEditor } from '@/components/workbench/CodeEditor';
@@ -18,8 +18,10 @@ import {
 import { generateScaffold } from '@/lib/scaffolder';
 import type { DissectedFile } from '@/lib/types';
 import { generateCodebaseReadme } from '@/lib/ai';
+import { saveOutput, listOutputs, deleteOutput, type SavedOutput } from '@/lib/outputVault';
 
 type Status = 'idle' | 'dissecting' | 'ready' | 'synthesizing';
+const TAB_KEY = 'archi';
 
 export default function ArchiApp() {
   const { toast } = useToast();
@@ -29,6 +31,11 @@ export default function ArchiApp() {
   const [framework, setFramework] = useState<string>();
   const [dependencies, setDependencies] = useState<string[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [saved, setSaved] = useState<SavedOutput[]>([]);
+
+  useEffect(() => {
+    setSaved(listOutputs(TAB_KEY));
+  }, []);
 
   const tree = useMemo(() => buildFileTree(files), [files]);
 
@@ -108,6 +115,30 @@ export default function ArchiApp() {
     toast({ title: 'Export ready', description: 'vicious-archi-export.zip downloaded.' });
   }
 
+  function handleSaveOutput() {
+    const readme = files.find((f) => f.path === 'README.md');
+    if (!readme) {
+      toast({ title: 'Nothing to save', description: 'Synthesize a README first.' });
+      return;
+    }
+    const entry = saveOutput(TAB_KEY, `README (${framework ?? 'unknown'})`, readme.content);
+    setSaved((prev) => [entry, ...prev]);
+    toast({ title: 'Saved', description: 'README output saved.' });
+  }
+
+  function handleDeleteSaved(id: string) {
+    deleteOutput(TAB_KEY, id);
+    setSaved((prev) => prev.filter((o) => o.id !== id));
+  }
+
+  function handleLoadSaved(entry: SavedOutput) {
+    setFiles((prev) => [
+      ...prev.filter((f) => f.path !== 'README.md'),
+      { path: 'README.md', content: entry.content, language: 'markdown' },
+    ]);
+    setSelectedPath('README.md');
+  }
+
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
@@ -129,6 +160,10 @@ export default function ArchiApp() {
           >
             <Sparkles className="mr-2 h-4 w-4" />
             Synthesize README
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleSaveOutput}>
+            <Save className="mr-2 h-4 w-4" />
+            Save output
           </Button>
           <Button size="sm" onClick={handleExportZip} disabled={files.length === 0}>
             <FileArchive className="mr-2 h-4 w-4" />
@@ -153,6 +188,27 @@ export default function ArchiApp() {
           onSelect={setSelectedPath}
         />
       </main>
+
+      {saved.length > 0 && (
+        <div className="flex shrink-0 flex-wrap gap-2 border-t border-border p-2">
+          {saved.map((entry) => (
+            <div
+              key={entry.id}
+              className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs"
+            >
+              <button className="font-medium hover:underline" onClick={() => handleLoadSaved(entry)}>
+                {entry.label}
+              </button>
+              <button
+                onClick={() => handleDeleteSaved(entry.id)}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <StatusBar
         framework={framework}

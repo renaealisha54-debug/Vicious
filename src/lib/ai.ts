@@ -189,6 +189,11 @@ export async function aiCodeGenerator(description: string): Promise<string> {
     maxTokens: 1024,
   });
 
+  // Groq sometimes wraps the code in explanatory prose with a fenced
+  // block in the middle (headers, "Step-by-step analysis", etc.) despite
+  // being told not to. Pull the fenced block out of the response if one
+  // exists anywhere in it; only fall back to the raw trimmed text if no
+  // fence is found at all.
   const fenceMatch = raw.match(/```[a-zA-Z]*\n([\s\S]*?)```/);
   if (fenceMatch) {
     return fenceMatch[1].trim();

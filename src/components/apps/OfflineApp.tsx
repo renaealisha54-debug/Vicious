@@ -1,24 +1,28 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { summarizeText, explainCodeSnippet, detectLanguage } from '@/lib/ai';
+import { saveOutput, listOutputs, deleteOutput, type SavedOutput } from '@/lib/outputVault';
 
 const DRAFT_KEY = 'ViciousSuite_Offline_draft';
+const TAB_KEY = 'offline';
 
 export default function OfflineApp() {
   const { toast } = useToast();
   const [text, setText] = useState('');
   const [result, setResult] = useState('');
   const [busy, setBusy] = useState<'summarize' | 'explain' | 'detect' | null>(null);
+  const [saved, setSaved] = useState<SavedOutput[]>([]);
 
   // Load / persist draft locally, same as the original app.
   useEffect(() => {
-    const saved = window.localStorage.getItem(DRAFT_KEY);
-    if (saved) setText(saved);
+    const savedDraft = window.localStorage.getItem(DRAFT_KEY);
+    if (savedDraft) setText(savedDraft);
+    setSaved(listOutputs(TAB_KEY));
   }, []);
 
   useEffect(() => {
@@ -61,6 +65,18 @@ export default function OfflineApp() {
     setResult('');
     setBusy(null);
     window.localStorage.removeItem(DRAFT_KEY);
+  }
+
+  function handleSaveOutput() {
+    if (!result.trim()) return;
+    const entry = saveOutput(TAB_KEY, result.slice(0, 40) || 'Untitled', result);
+    setSaved((prev) => [entry, ...prev]);
+    toast({ title: 'Saved', description: 'Output saved.' });
+  }
+
+  function handleDeleteSaved(id: string) {
+    deleteOutput(TAB_KEY, id);
+    setSaved((prev) => prev.filter((o) => o.id !== id));
   }
 
   return (
@@ -114,8 +130,41 @@ export default function OfflineApp() {
       </div>
 
       {result && (
-        <div className="rounded-lg border border-input bg-card p-3 text-sm whitespace-pre-wrap">
-          {result}
+        <div className="flex flex-col gap-2">
+          <div className="rounded-lg border border-input bg-card p-3 text-sm whitespace-pre-wrap">
+            {result}
+          </div>
+          <Button size="sm" variant="outline" className="self-start" onClick={handleSaveOutput}>
+            <Save className="mr-2 h-4 w-4" />
+            Save output
+          </Button>
+        </div>
+      )}
+
+      {saved.length > 0 && (
+        <div className="flex flex-col gap-2 border-t border-border pt-3">
+          <h3 className="text-xs font-medium text-muted-foreground">Saved outputs</h3>
+          <div className="flex flex-wrap gap-2">
+            {saved.map((entry) => (
+              <div
+                key={entry.id}
+                className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs"
+              >
+                <button
+                  className="font-medium hover:underline"
+                  onClick={() => setResult(entry.content)}
+                >
+                  {entry.label}
+                </button>
+                <button
+                  onClick={() => handleDeleteSaved(entry.id)}
+                  className="text-muted-foreground hover:text-destructive"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
