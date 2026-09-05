@@ -15,21 +15,45 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '17'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Next.js bundle
+        run: npm run build
+
+      - name: Add Capacitor Android platform
+        run: npx cap add android
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Pin compileSdk/targetSdk to 34
+        run: |
+          if [ -f "android/variables.gradle" ]; then
+            sed -i 's/compileSdkVersion = .*/compileSdkVersion = 34/' android/variables.gradle
+            sed -i 's/targetSdkVersion = .*/targetSdkVersion = 34/' android/variables.gradle
+          fi
 
       - name: Grant execute permission for gradlew
         run: chmod +x android/gradlew
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
